@@ -1,0 +1,20 @@
+# Tell Nixpacks exactly what to use and do
+[phases.setup]
+# tools we need at build/runtime
+nixPkgs = ["curl", "tar", "unzip", "bash", "coreutils", "ca-certificates"]
+
+[phases.install]
+cmds = [
+  "mkdir -p bin",
+  # --- Gophish ---
+  "GOPHISH_VER=${GOPHISH_VER:-v0.12.1}; curl -fsSL -o /tmp/gophish.zip https://github.com/gophish/gophish/releases/download/${GOPHISH_VER}/gophish-${GOPHISH_VER}-linux-64bit.zip",
+  "unzip -o /tmp/gophish.zip -d bin",
+  "chmod +x bin/gophish",
+  # --- Caddy ---
+  "CADDY_VER=${CADDY_VER:-v2.8.4}; curl -fsSL -o /tmp/caddy.tar.gz https://github.com/caddyserver/caddy/releases/download/${CADDY_VER}/caddy_${CADDY_VER}_linux_amd64.tar.gz",
+  "tar -C bin -xzf /tmp/caddy.tar.gz caddy",
+  "chmod +x bin/caddy"
+]
+
+[start]
+cmd = "./start.sh"
