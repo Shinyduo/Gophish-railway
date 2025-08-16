@@ -1,10 +1,10 @@
-:8080 {
-	encode gzip
+:{$PORT} {
+  encode gzip
 
-	# Admin UI/API on /admin and /api -> gophish admin 3333
-	@admin path /admin* /api* /login* /logout
-	reverse_proxy @admin 127.0.0.1:3333
+  # Admin UI/API on /admin and /api -> gophish admin (3333)
+  @admin path /admin* /api* /login* /logout
+  reverse_proxy @admin 127.0.0.1:3333
 
-	# Phish listener on root -> gophish 8081
-	reverse_proxy 127.0.0.1:8081
+  # Phish listener on root -> gophish (8081)
+  reverse_proxy 127.0.0.1:8081
 }
