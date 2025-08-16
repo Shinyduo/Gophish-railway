@@ -1,28 +1,44 @@
 #!/bin/sh
 set -eu
 
-# Defaults (can be overridden by Railway Variables)
-: "${ADMIN_BIND:=0.0.0.0:3333}"
-: "${PHISH_BIND:=0.0.0.0:8081}"
-: "${USE_TLS:=false}"
+# ---------- CONFIG FROM ENV ----------
+: "${PORT:=8080}"                    # Railway routes 443 -> $PORT
+: "${ADMIN_BIND:=127.0.0.1:3333}"    # Admin binds internally
+: "${PHISH_BIND:=127.0.0.1:8081}"    # Phish binds internally
+: "${USE_TLS:=false}"                # Railway terminates TLS
+: "${CONTACT_ADDRESS:=security@example.com}"
 
-# Postgres mode (recommended)
-: "${DB_NAME:=postgres}"
-: "${DB_PATH:=${DATABASE_URL:-}}"
-
-# Fall back to SQLite if no DATABASE_URL present
-if [ -z "${DB_PATH}" ]; then
+# DB: prefer Postgres if DATABASE_URL is present, else SQLite
+if [ -n "${DATABASE_URL:-}" ]; then
+  DB_NAME="postgres"
+  DB_PATH="${DATABASE_URL}"
+else
   DB_NAME="sqlite3"
   : "${DB_PATH:=/data/gophish.db}"
 fi
 
-: "${CONTACT_ADDRESS:=security@example.com}"
-
-# Create data dir if needed (for SQLite)
 mkdir -p /data
 
-# Generate config.json using shell variable interpolation
-cat > /app/config.json <<EOF
+# ---------- BUILD/VERIFY ARTIFACTS ----------
+# If the gophish binary isn't present (first run), build it.
+if [ ! -x ./gophish ]; then
+  echo "Building gophish binary..."
+  # Standard Go build; Railway's Go builder provides go toolchain
+  CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o gophish ./...
+fi
+
+# Download Caddy (static binary) if not present
+if [ ! -x ./caddy ]; then
+  echo "Downloading Caddy..."
+  # Minimal detection (linux amd64)
+  CADDY_VER="v2.8.4"
+  curl -fsSL -o /tmp/caddy.tar.gz "https://github.com/caddyserver/caddy/releases/download/${CADDY_VER}/caddy_${CADDY_VER}_linux_amd64.tar.gz"
+  tar -C . -xzf /tmp/caddy.tar.gz caddy
+  chmod +x ./caddy
+fi
+
+# ---------- RENDER GOPHISH CONFIG ----------
+cat > /app.config.json <<EOF
 {
   "admin_server": {
     "listen_url": "${ADMIN_BIND}",
@@ -50,11 +66,12 @@ cat > /app/config.json <<EOF
 }
 EOF
 
-echo "Rendered /app/config.json (passwords redacted)."
+echo "Rendered /app.config.json (secrets redacted)."
 
+# ---------- START SERVICES ----------
 # Start Gophish (background)
-/app/gophish --config /app/config.json &
+./gophish --config /app.config.json &
 GOPHISH_PID=$!
 
-# Start Caddy reverse proxy (foreground)
-/usr/bin/caddy run --config /app/Caddyfile --adapter caddyfile
+# Start Caddy reverse proxy on $PORT (foreground)
+/bin/sh -c "./caddy run --config ./Caddyfile --adapter caddyfile"
