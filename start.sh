@@ -18,6 +18,7 @@ fi
 
 mkdir -p /data
 
+# Absolute config path
 CONFIG_PATH="$(pwd)/app.config.json"
 cat > "${CONFIG_PATH}" <<EOF
 {
@@ -62,7 +63,7 @@ echo "Starting Gophish from ./bin (admin ${ADMIN_BIND}, phish ${PHISH_BIND})..."
 ) &
 GOPHISH_PID=$!
 
-# Short buffer so Caddy’s first proxy doesn’t race
+# Small buffer so Caddy's first proxy doesn't race the listener
 sleep 2
 
 echo "Starting Caddy on :${PORT}..."
