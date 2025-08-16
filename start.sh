@@ -1,14 +1,12 @@
 #!/bin/sh
 set -eu
 
-# ---------- CONFIG FROM ENV ----------
 : "${PORT:=8080}"
 : "${ADMIN_BIND:=127.0.0.1:3333}"
 : "${PHISH_BIND:=127.0.0.1:8081}"
 : "${USE_TLS:=false}"
 : "${CONTACT_ADDRESS:=security@example.com}"
 
-# Prefer Postgres if DATABASE_URL exists; fallback to SQLite otherwise
 if [ -n "${DATABASE_URL:-}" ]; then
   DB_NAME="postgres"
   DB_PATH="${DATABASE_URL}"
@@ -19,18 +17,17 @@ fi
 
 mkdir -p /data
 
-# Ensure binaries
+# Sanity checks
 if [ ! -x ./bin/gophish ]; then
-  echo "ERROR: ./bin/gophish not found or not executable. Check nixpacks.toml install phase." >&2
+  echo "ERROR: ./bin/gophish not found or not executable." >&2
   exit 1
 fi
-CADDY_BIN="${CADDY_BIN:-$(command -v caddy || true)}"
-if [ -z "$CADDY_BIN" ]; then
-  echo "ERROR: caddy not found in PATH. Nix should have installed it. Check nixpacks.toml setup phase." >&2
+if ! command -v caddy >/dev/null 2>&1; then
+  echo "ERROR: caddy not found in PATH." >&2
   exit 1
 fi
 
-# ---------- RENDER GOPHISH CONFIG ----------
+# Render config
 cat > /app.config.json <<EOF
 {
   "admin_server": { "listen_url": "${ADMIN_BIND}", "use_tls": ${USE_TLS} },
@@ -63,10 +60,13 @@ cleanup() {
 }
 trap cleanup INT TERM
 
-# ---------- START ----------
-echo "Starting Gophish..."
-./bin/gophish --config /app.config.json &
+# --- IMPORTANT CHANGE: run from bin so ./VERSION is found ---
+echo "Starting Gophish from ./bin (admin ${ADMIN_BIND}, phish ${PHISH_BIND})..."
+(
+  cd ./bin
+  ./gophish --config ../app.config.json
+) &
 GOPHISH_PID=$!
 
 echo "Starting Caddy on :${PORT}..."
-exec "$CADDY_BIN" run --config ./Caddyfile --adapter caddyfile
+exec caddy run --config ./Caddyfile --adapter caddyfile
