@@ -1,25 +1,60 @@
-#!/usr/bin/env bash
-set -euo pipefail
+#!/bin/sh
+set -eu
 
-# 1) Render config from env -> /app/config.json
-: "${ADMIN_BIND:=0.0.0.0:3333}"     # internal admin bind
-: "${PHISH_BIND:=0.0.0.0:8081}"     # internal phish bind
-: "${USE_TLS:=false}"               # Railway terminates TLS
-: "${DB_NAME:=sqlite3}"             # sqlite3 by default
-: "${DB_PATH:=/data/gophish.db}"    # put db on /data to persist with a Volume
+# Defaults (can be overridden by Railway Variables)
+: "${ADMIN_BIND:=0.0.0.0:3333}"
+: "${PHISH_BIND:=0.0.0.0:8081}"
+: "${USE_TLS:=false}"
+
+# Postgres mode (recommended)
+: "${DB_NAME:=postgres}"
+: "${DB_PATH:=${DATABASE_URL:-}}"
+
+# Fall back to SQLite if no DATABASE_URL present
+if [ -z "${DB_PATH}" ]; then
+  DB_NAME="sqlite3"
+  : "${DB_PATH:=/data/gophish.db}"
+fi
+
 : "${CONTACT_ADDRESS:=security@example.com}"
 
+# Create data dir if needed (for SQLite)
 mkdir -p /data
 
-envsubst < /app/config.template.json > /app/config.json
-echo "Rendered /app/config.json:"
-sed 's/"password": *".*"/"password":"********"/' /app/config.json | sed 's/"smtp" *: *{[^}]*}/"smtp":{...}/'
+# Generate config.json using shell variable interpolation
+cat > /app/config.json <<EOF
+{
+  "admin_server": {
+    "listen_url": "${ADMIN_BIND}",
+    "use_tls": ${USE_TLS}
+  },
+  "phish_server": {
+    "listen_url": "${PHISH_BIND}",
+    "use_tls": ${USE_TLS}
+  },
+  "db_name": "${DB_NAME}",
+  "db_path": "${DB_PATH}",
+  "migrations_prefix": "db/db_",
+  "contact_address": "${CONTACT_ADDRESS}",
+  "logging": { "filename": "", "level": "info", "json": false },
+  "smtp": {
+    "host": "${SMTP_HOST:-}",
+    "port": "${SMTP_PORT:-}",
+    "username": "${SMTP_USERNAME:-}",
+    "password": "${SMTP_PASSWORD:-}",
+    "from_address": "${SMTP_FROM:-}",
+    "ignore_cert_errors": ${SMTP_IGNORE_CERT_ERRORS:-false}
+  },
+  "phish_server_cert": "",
+  "phish_server_key": ""
+}
+EOF
 
-# 2) Start Gophish (background)
-echo "Starting Gophish..."
+echo "Rendered /app/config.json (passwords redacted)."
+
+# Start Gophish (background)
 /app/gophish --config /app/config.json &
 GOPHISH_PID=$!
 
-# 3) Start Caddy (foreground) as reverse proxy on :8080
-echo "Starting Caddy reverse proxy on :8080 ..."
-exec caddy run --config /app/Caddyfile --adapter caddyfile
+# Start Caddy reverse proxy (foreground)
+/usr/bin/caddy run --config /app/Caddyfile --adapter caddyfile
