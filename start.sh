@@ -2,10 +2,10 @@
 set -eu
 
 # ---------- CONFIG FROM ENV ----------
-: "${PORT:=8080}"                    # Railway routes HTTPS -> $PORT
-: "${ADMIN_BIND:=127.0.0.1:3333}"    # Admin binds internally
-: "${PHISH_BIND:=127.0.0.1:8081}"    # Phish binds internally
-: "${USE_TLS:=false}"                # Railway terminates TLS
+: "${PORT:=8080}"
+: "${ADMIN_BIND:=127.0.0.1:3333}"
+: "${PHISH_BIND:=127.0.0.1:8081}"
+: "${USE_TLS:=false}"
 : "${CONTACT_ADDRESS:=security@example.com}"
 
 # Prefer Postgres if DATABASE_URL exists; fallback to SQLite otherwise
@@ -17,21 +17,18 @@ else
   : "${DB_PATH:=/data/gophish.db}"
 fi
 
-# Ensure runtime dirs
 mkdir -p /data
 
-# Ensure binaries from nixpacks install phase
+# Ensure binaries
 if [ ! -x ./bin/gophish ]; then
   echo "ERROR: ./bin/gophish not found or not executable. Check nixpacks.toml install phase." >&2
   exit 1
 fi
-if [ ! -x ./bin/caddy ]; then
-  echo "ERROR: ./bin/caddy not found or not executable. Check nixpacks.toml install phase." >&2
+CADDY_BIN="${CADDY_BIN:-$(command -v caddy || true)}"
+if [ -z "$CADDY_BIN" ]; then
+  echo "ERROR: caddy not found in PATH. Nix should have installed it. Check nixpacks.toml setup phase." >&2
   exit 1
 fi
-
-# Defensive: make sure they are executable
-chmod +x ./bin/gophish ./bin/caddy || true
 
 # ---------- RENDER GOPHISH CONFIG ----------
 cat > /app.config.json <<EOF
@@ -58,26 +55,18 @@ EOF
 
 echo "Rendered /app.config.json (secrets redacted)."
 echo "DB driver: ${DB_NAME}"
-[ "${DB_NAME}" = "postgres" ] && echo "Using DATABASE_URL from env."
 
-# ---------- CLEAN SHUTDOWN HANDLER ----------
+# Graceful shutdown
 GOPHISH_PID=""
 cleanup() {
-  if [ -n "${GOPHISH_PID}" ] && kill -0 "${GOPHISH_PID}" 2>/dev/null; then
-    echo "Stopping gophish (pid ${GOPHISH_PID})..."
-    kill "${GOPHISH_PID}" || true
-    wait "${GOPHISH_PID}" 2>/dev/null || true
-  fi
+  [ -n "${GOPHISH_PID}" ] && kill "${GOPHISH_PID}" 2>/dev/null || true
 }
 trap cleanup INT TERM
 
-# ---------- START SERVICES ----------
-# Start Gophish (background)
-echo "Starting Gophish (admin at ${ADMIN_BIND}, phish at ${PHISH_BIND})..."
+# ---------- START ----------
+echo "Starting Gophish..."
 ./bin/gophish --config /app.config.json &
 GOPHISH_PID=$!
 
-# Start Caddy reverse proxy on $PORT (foreground)
-# Caddyfile must use :{$PORT}
-echo "Starting Caddy on :${PORT} (proxying /admin -> ${ADMIN_BIND}, / -> ${PHISH_BIND})..."
-exec ./bin/caddy run --config ./Caddyfile --adapter caddyfile
+echo "Starting Caddy on :${PORT}..."
+exec "$CADDY_BIN" run --config ./Caddyfile --adapter caddyfile
