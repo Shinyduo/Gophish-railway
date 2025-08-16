@@ -1,0 +1,29 @@
+{
+  "admin_server": {
+    "listen_url": "${ADMIN_BIND}",
+    "use_tls": ${USE_TLS}
+  },
+  "phish_server": {
+    "listen_url": "${PHISH_BIND}",
+    "use_tls": ${USE_TLS}
+  },
+  "db_name": "${DB_NAME}",
+  "db_path": "${DB_PATH}",
+  "migrations_prefix": "db/db_",
+  "contact_address": "${CONTACT_ADDRESS}",
+  "logging": {
+    "filename": "",
+    "level": "info",
+    "json": false
+  },
+  "smtp": {
+    "host": "${SMTP_HOST:-}",
+    "port": "${SMTP_PORT:-}",
+    "username": "${SMTP_USERNAME:-}",
+    "password": "${SMTP_PASSWORD:-}",
+    "from_address": "${SMTP_FROM:-}",
+    "ignore_cert_errors": ${SMTP_IGNORE_CERT_ERRORS:-false}
+  },
+  "phish_server_cert": "",
+  "phish_server_key": ""
+}
