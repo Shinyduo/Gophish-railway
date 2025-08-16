@@ -17,7 +17,21 @@ else
   : "${DB_PATH:=/data/gophish.db}"
 fi
 
+# Ensure runtime dirs
 mkdir -p /data
+
+# Ensure binaries from nixpacks install phase
+if [ ! -x ./bin/gophish ]; then
+  echo "ERROR: ./bin/gophish not found or not executable. Check nixpacks.toml install phase." >&2
+  exit 1
+fi
+if [ ! -x ./bin/caddy ]; then
+  echo "ERROR: ./bin/caddy not found or not executable. Check nixpacks.toml install phase." >&2
+  exit 1
+fi
+
+# Defensive: make sure they are executable
+chmod +x ./bin/gophish ./bin/caddy || true
 
 # ---------- RENDER GOPHISH CONFIG ----------
 cat > /app.config.json <<EOF
@@ -43,11 +57,27 @@ cat > /app.config.json <<EOF
 EOF
 
 echo "Rendered /app.config.json (secrets redacted)."
+echo "DB driver: ${DB_NAME}"
+[ "${DB_NAME}" = "postgres" ] && echo "Using DATABASE_URL from env."
+
+# ---------- CLEAN SHUTDOWN HANDLER ----------
+GOPHISH_PID=""
+cleanup() {
+  if [ -n "${GOPHISH_PID}" ] && kill -0 "${GOPHISH_PID}" 2>/dev/null; then
+    echo "Stopping gophish (pid ${GOPHISH_PID})..."
+    kill "${GOPHISH_PID}" || true
+    wait "${GOPHISH_PID}" 2>/dev/null || true
+  fi
+}
+trap cleanup INT TERM
 
 # ---------- START SERVICES ----------
 # Start Gophish (background)
+echo "Starting Gophish (admin at ${ADMIN_BIND}, phish at ${PHISH_BIND})..."
 ./bin/gophish --config /app.config.json &
 GOPHISH_PID=$!
 
 # Start Caddy reverse proxy on $PORT (foreground)
-./bin/caddy run --config ./Caddyfile --adapter caddyfile
+# Caddyfile must use :{$PORT}
+echo "Starting Caddy on :${PORT} (proxying /admin -> ${ADMIN_BIND}, / -> ${PHISH_BIND})..."
+exec ./bin/caddy run --config ./Caddyfile --adapter caddyfile
