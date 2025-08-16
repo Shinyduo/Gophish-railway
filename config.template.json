@@ -23,7 +23,5 @@
     "password": "${SMTP_PASSWORD:-}",
     "from_address": "${SMTP_FROM:-}",
     "ignore_cert_errors": ${SMTP_IGNORE_CERT_ERRORS:-false}
-  },
-  "phish_server_cert": "",
-  "phish_server_key": ""
+  }
 }
