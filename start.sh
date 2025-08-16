@@ -2,8 +2,8 @@
 set -eu
 
 : "${PORT:=8080}"
-: "${ADMIN_BIND:=127.0.0.1:3333}"
-: "${PHISH_BIND:=127.0.0.1:8081}"
+: "${ADMIN_BIND:=0.0.0.0:3333}"
+: "${PHISH_BIND:=0.0.0.0:8081}"
 : "${USE_TLS:=false}"
 : "${CONTACT_ADDRESS:=security@example.com}"
 
@@ -18,7 +18,6 @@ fi
 
 mkdir -p /data
 
-# Write config to an ABSOLUTE path
 CONFIG_PATH="$(pwd)/app.config.json"
 cat > "${CONFIG_PATH}" <<EOF
 {
@@ -46,8 +45,7 @@ echo "DB driver: ${DB_NAME}"
 
 # Sanity checks
 [ -x ./bin/gophish ] || { echo "ERROR: ./bin/gophish not found/executable"; exit 1; }
-CADDY_BIN="${CADDY_BIN:-$(command -v caddy || true)}"
-[ -n "${CADDY_BIN}" ] || { echo "ERROR: caddy not in PATH"; exit 1; }
+[ -f ./bin/VERSION ] || { echo "ERROR: ./bin/VERSION missing"; exit 1; }
 
 # Graceful shutdown
 GOPHISH_PID=""
@@ -56,7 +54,7 @@ cleanup() {
 }
 trap cleanup INT TERM
 
-# --- Run Gophish from ./bin so it finds ./VERSION ---
+# Run Gophish from ./bin so it sees ./VERSION
 echo "Starting Gophish from ./bin (admin ${ADMIN_BIND}, phish ${PHISH_BIND})..."
 (
   cd ./bin
@@ -64,9 +62,8 @@ echo "Starting Gophish from ./bin (admin ${ADMIN_BIND}, phish ${PHISH_BIND})..."
 ) &
 GOPHISH_PID=$!
 
-# Tiny wait so Caddy doesn't race the first proxy attempt
-sleep 1
+# Short buffer so Caddy’s first proxy doesn’t race
+sleep 2
 
-# Start Caddy (frontend proxy on :$PORT)
 echo "Starting Caddy on :${PORT}..."
-exec "${CADDY_BIN}" run --config ./Caddyfile --adapter caddyfile
+exec caddy run --config ./Caddyfile --adapter caddyfile
