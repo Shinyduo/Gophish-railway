@@ -1,0 +1,11 @@
+# Caddy listens on port 8080 (Railway will route 443 -> 8080)
+:8080 {
+	encode gzip
+
+	# Admin UI and API on /admin and /api paths -> gophish admin at 127.0.0.1:3333
+	@admin path /admin* /api* /login /login* /logout
+	reverse_proxy @admin 127.0.0.1:3333
+
+	# Phish listener (landing pages, tracking, etc.) on root -> 127.0.0.1:8081
+	reverse_proxy 127.0.0.1:8081
+}
