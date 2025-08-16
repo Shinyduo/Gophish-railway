@@ -1,28 +1,28 @@
 # nixpacks.toml
 [phases.setup]
-# keep it lean; caddy from nix
-nixPkgs = ["curl", "unzip", "gnutar", "coreutils", "bash", "caddy"]
+# We build from source, so we need go + git. Caddy comes from Nix (no curl download).
+nixPkgs = ["go", "git", "bash", "coreutils", "gnutar", "curl", "caddy"]
 
 [phases.install]
 cmds = [
   "set -e",
   "mkdir -p bin",
 
-  # --- Download Gophish ---
+  # --- Choose the tag to build (defaults to v0.12.1). You can override GOPHISH_VER in Railway vars. ---
   "GOPHISH_VER=${GOPHISH_VER:-v0.12.1}",
-  "curl --proto '=https' --tlsv1.2 -fsSLo /tmp/gophish.zip https://github.com/gophish/gophish/releases/download/${GOPHISH_VER}/gophish-${GOPHISH_VER}-linux-64bit.zip",
-  "unzip -o /tmp/gophish.zip -d /tmp/gophish_unz",
 
-  # Move binary + VERSION to ./bin regardless of zip structure
-  "find /tmp/gophish_unz -type f -name gophish -exec mv -f {} bin/gophish \\; || true",
-  "find /tmp/gophish_unz -type f -name VERSION -exec mv -f {} bin/VERSION \\; || true",
+  # --- Clone the tagged source and build a static-ish binary ---
+  "rm -rf /tmp/gophish_src",
+  "git clone --depth=1 --branch ${GOPHISH_VER} https://github.com/gophish/gophish /tmp/gophish_src",
+  "cd /tmp/gophish_src && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o /workspace/bin/gophish ./...",
 
-  # Ensure VERSION exists and is valid semver (strip leading 'v')
-  "if [ ! -f bin/VERSION ]; then echo \"${GOPHISH_VER#v}\" > bin/VERSION; else sed -e 's/^v//' -i bin/VERSION; fi",
+  # --- Ensure VERSION file exists (strip leading 'v') next to the binary ---
+  "echo ${GOPHISH_VER#v} > bin/VERSION",
 
-  # Permissions
+  # --- Permissions ---
   "chmod +x bin/gophish"
 ]
 
 [start]
+# Run via shell to avoid executable-bit issues
 cmd = "bash start.sh"
