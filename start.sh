@@ -7,6 +7,7 @@ set -eu
 : "${USE_TLS:=false}"
 : "${CONTACT_ADDRESS:=security@example.com}"
 
+# Prefer Postgres if DATABASE_URL exists; fallback to SQLite otherwise
 if [ -n "${DATABASE_URL:-}" ]; then
   DB_NAME="postgres"
   DB_PATH="${DATABASE_URL}"
@@ -17,18 +18,9 @@ fi
 
 mkdir -p /data
 
-# Sanity checks
-if [ ! -x ./bin/gophish ]; then
-  echo "ERROR: ./bin/gophish not found or not executable." >&2
-  exit 1
-fi
-if ! command -v caddy >/dev/null 2>&1; then
-  echo "ERROR: caddy not found in PATH." >&2
-  exit 1
-fi
-
-# Render config
-cat > /app.config.json <<EOF
+# Write config to an ABSOLUTE path
+CONFIG_PATH="$(pwd)/app.config.json"
+cat > "${CONFIG_PATH}" <<EOF
 {
   "admin_server": { "listen_url": "${ADMIN_BIND}", "use_tls": ${USE_TLS} },
   "phish_server": { "listen_url": "${PHISH_BIND}", "use_tls": ${USE_TLS} },
@@ -49,9 +41,13 @@ cat > /app.config.json <<EOF
   "phish_server_key": ""
 }
 EOF
-
-echo "Rendered /app.config.json (secrets redacted)."
+echo "Rendered ${CONFIG_PATH} (secrets redacted)."
 echo "DB driver: ${DB_NAME}"
+
+# Sanity checks
+[ -x ./bin/gophish ] || { echo "ERROR: ./bin/gophish not found/executable"; exit 1; }
+CADDY_BIN="${CADDY_BIN:-$(command -v caddy || true)}"
+[ -n "${CADDY_BIN}" ] || { echo "ERROR: caddy not in PATH"; exit 1; }
 
 # Graceful shutdown
 GOPHISH_PID=""
@@ -60,13 +56,17 @@ cleanup() {
 }
 trap cleanup INT TERM
 
-# --- IMPORTANT CHANGE: run from bin so ./VERSION is found ---
+# --- Run Gophish from ./bin so it finds ./VERSION ---
 echo "Starting Gophish from ./bin (admin ${ADMIN_BIND}, phish ${PHISH_BIND})..."
 (
   cd ./bin
-  ./gophish --config ../app.config.json
+  ./gophish --config "${CONFIG_PATH}"
 ) &
 GOPHISH_PID=$!
 
+# Tiny wait so Caddy doesn't race the first proxy attempt
+sleep 1
+
+# Start Caddy (frontend proxy on :$PORT)
 echo "Starting Caddy on :${PORT}..."
-exec caddy run --config ./Caddyfile --adapter caddyfile
+exec "${CADDY_BIN}" run --config ./Caddyfile --adapter caddyfile
