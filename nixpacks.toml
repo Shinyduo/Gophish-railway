@@ -1,14 +1,26 @@
 # nixpacks.toml
 [phases.setup]
-# Keep it lean; no cacert. Add caddy from nix instead of downloading it.
+# keep it lean; caddy from nix
 nixPkgs = ["curl", "unzip", "gnutar", "coreutils", "bash", "caddy"]
 
 [phases.install]
 cmds = [
+  "set -e",
   "mkdir -p bin",
-  # --- Gophish (download only this) ---
-  "GOPHISH_VER=${GOPHISH_VER:-v0.12.1}; curl --proto '=https' --tlsv1.2 -fsSLo /tmp/gophish.zip https://github.com/gophish/gophish/releases/download/${GOPHISH_VER}/gophish-${GOPHISH_VER}-linux-64bit.zip",
-  "unzip -o /tmp/gophish.zip -d bin",
+
+  # --- Download Gophish ---
+  "GOPHISH_VER=${GOPHISH_VER:-v0.12.1}",
+  "curl --proto '=https' --tlsv1.2 -fsSLo /tmp/gophish.zip https://github.com/gophish/gophish/releases/download/${GOPHISH_VER}/gophish-${GOPHISH_VER}-linux-64bit.zip",
+  "unzip -o /tmp/gophish.zip -d /tmp/gophish_unz",
+
+  # Move binary + VERSION to ./bin regardless of zip structure
+  "find /tmp/gophish_unz -type f -name gophish -exec mv -f {} bin/gophish \\; || true",
+  "find /tmp/gophish_unz -type f -name VERSION -exec mv -f {} bin/VERSION \\; || true",
+
+  # Ensure VERSION exists and is valid semver (strip leading 'v')
+  "if [ ! -f bin/VERSION ]; then echo \"${GOPHISH_VER#v}\" > bin/VERSION; else sed -e 's/^v//' -i bin/VERSION; fi",
+
+  # Permissions
   "chmod +x bin/gophish"
 ]
 
