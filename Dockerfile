@@ -1,30 +1,24 @@
-# ---- Builder: build gophish ----
-FROM golang:1.22 as builder
+# ---- Build gophish binary ----
+FROM golang:1.22 AS builder
 WORKDIR /src
-# If you forked the official repo, keep the contents; otherwise pull it here:
-# RUN git clone --depth=1 https://github.com/gophish/gophish ./
+# If your repo already contains gophish sources, keep COPY . ./
+# Otherwise clone; but copying your fork is preferred:
 COPY . ./
-# Build static binary
+# Build static
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o /gophish ./...
 
-# ---- Runtime: gophish + caddy ----
-FROM alpine:3.20
+# ---- Runtime with Caddy, no apk installs ----
+FROM caddy:2.8.4-alpine
 WORKDIR /app
 
-# Install Caddy (reverse proxy) + envsubst
-RUN apk add --no-cache caddy bash curl ca-certificates gettext
-
-# Copy gophish
+# Copy gophish binary and runtime files
 COPY --from=builder /gophish /app/gophish
+COPY Caddyfile /app/Caddyfile
+COPY start.sh  /app/start.sh
 
-# Copy our config/template/proxy/entry
-COPY config.template.json /app/config.template.json
-COPY Caddyfile             /app/Caddyfile
-COPY start.sh              /app/start.sh
+# Use POSIX sh; no bash/envsubst required
 RUN chmod +x /app/start.sh
 
-# Listen on one public port in Railway (8080). Caddy fronts both admin & phish.
+# Railway will route 443 -> 8080
 EXPOSE 8080
-
-# Railway’s root runs this
 CMD ["/app/start.sh"]
