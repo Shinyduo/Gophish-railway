@@ -1,7 +1,9 @@
-# Tell Nixpacks exactly what to use and do
+# nixpacks.toml
 [phases.setup]
-# tools we need at build/runtime
-nixPkgs = ["curl", "tar", "unzip", "bash", "coreutils", "ca-certificates"]
+# Correct Nix package names:
+# - cacert (NOT ca-certificates)
+# - gnutar (NOT tar)
+nixPkgs = ["curl", "unzip", "gnutar", "coreutils", "bash", "cacert"]
 
 [phases.install]
 cmds = [
